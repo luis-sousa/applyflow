@@ -8,6 +8,7 @@ export function Dashboard() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [editingApplicationId, setEditingApplicationId] = useState<string | null>(null)
   const [formData, setFormData] = useState<{
     title: string
     companyName: string
@@ -21,6 +22,8 @@ export function Dashboard() {
     appliedDate: new Date().toISOString().split('T')[0],
     notes: ''
   })
+
+  const isEditing = editingApplicationId !== null
 
   const loadApplications = async () => {
     if (!auth.token) return
@@ -42,6 +45,30 @@ export function Dashboard() {
     loadApplications()
   }, [auth.token])
 
+  const resetForm = () => {
+    setEditingApplicationId(null)
+    setFormData({
+      title: '',
+      companyName: '',
+      status: 'Applied',
+      appliedDate: new Date().toISOString().split('T')[0],
+      notes: ''
+    })
+    setShowForm(false)
+  }
+
+  const handleEdit = (application: api.Application) => {
+    setEditingApplicationId(application.id)
+    setFormData({
+      title: application.title,
+      companyName: application.companyName,
+      status: application.status,
+      appliedDate: new Date(application.appliedDate).toISOString().split('T')[0],
+      notes: application.notes ?? ''
+    })
+    setShowForm(true)
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!auth.token) return
@@ -49,24 +76,38 @@ export function Dashboard() {
     setError(null)
 
     try {
-      await api.createApplication(
-        {
-          ...formData,
-          appliedDate: new Date(formData.appliedDate).toISOString()
-        } as api.CreateApplicationRequest,
-        auth.token
-      )
-      setFormData({
-        title: '',
-        companyName: '',
-        status: 'Applied',
-        appliedDate: new Date().toISOString().split('T')[0],
-        notes: ''
-      })
-      setShowForm(false)
+      if (isEditing && editingApplicationId) {
+        await api.updateApplication(
+          editingApplicationId,
+          {
+            title: formData.title,
+            companyName: formData.companyName,
+            status: formData.status,
+            appliedDate: new Date(formData.appliedDate).toISOString(),
+            notes: formData.notes
+          },
+          auth.token
+        )
+      } else {
+        await api.createApplication(
+          {
+            ...formData,
+            appliedDate: new Date(formData.appliedDate).toISOString()
+          } as api.CreateApplicationRequest,
+          auth.token
+        )
+      }
+
+      resetForm()
       await loadApplications()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create application')
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEditing
+            ? 'Failed to update application'
+            : 'Failed to create application'
+      )
     }
   }
 
@@ -112,9 +153,15 @@ export function Dashboard() {
         <div className="controls">
           <button
             className="primary-button"
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              if (isEditing) {
+                resetForm()
+                return
+              }
+              setShowForm(!showForm)
+            }}
           >
-            {showForm ? 'Cancel' : 'New Application'}
+            {showForm ? (isEditing ? 'Cancel edit' : 'Cancel') : 'New Application'}
           </button>
         </div>
 
@@ -180,8 +227,17 @@ export function Dashboard() {
               />
             </label>
             <button type="submit" className="primary-button">
-              Create Application
+              {isEditing ? 'Update Application' : 'Create Application'}
             </button>
+            {isEditing && (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={resetForm}
+              >
+                Cancel edit
+              </button>
+            )}
           </form>
         )}
 
@@ -208,12 +264,22 @@ export function Dashboard() {
                     Applied: {new Date(app.appliedDate).toLocaleDateString()}
                   </p>
                   {app.notes && <p className="notes">{app.notes}</p>}
-                  <button
-                    className="delete-button"
-                    onClick={() => handleDelete(app.id)}
-                  >
-                    Delete
-                  </button>
+                  <div className="action-row">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => handleEdit(app)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="delete-button"
+                      onClick={() => handleDelete(app.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
