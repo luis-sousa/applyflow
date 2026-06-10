@@ -182,3 +182,78 @@
     border-right-color: var(--border);
   }
 }
+
+.page-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.card {
+  width: min(480px, 100%);
+  padding: 32px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+
+.auth-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font: inherit;
+}
+
+.primary-button,
+.secondary-button {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.primary-button {
+  background: var(--accent);
+  color: white;
+}
+
+.secondary-button {
+  background: transparent;
+  color: var(--text-h);
+  border: 1px solid var(--border);
+  margin-top: 12px;
+}
+
+.error-message {
+  color: #b2313f;
+  background: rgba(178, 49, 63, 0.08);
+  border: 1px solid rgba(178, 49, 63, 0.18);
+  padding: 12px 14px;
+  border-radius: 12px;
+}
+
+@media (max-width: 640px) {
+  .card {
+    padding: 24px;
+  }
+}
