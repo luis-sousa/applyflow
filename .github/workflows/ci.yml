@@ -37,3 +37,9 @@ jobs:
           cd backend
           dotnet restore
           dotnet build --no-restore --configuration Release
+      - name: Restore backend tests
+        run: |
+          dotnet restore backend.tests/backend.tests.csproj
+      - name: Run backend tests
+        run: |
+          dotnet test backend.tests/backend.tests.csproj --no-restore --configuration Release
