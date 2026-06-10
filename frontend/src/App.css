@@ -347,6 +347,91 @@
   gap: 16px;
 }
 
+.board {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.board-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 18px;
+  min-height: 320px;
+}
+
+.board-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.board-column-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.board-column-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.board-column-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.empty-column {
+  background: var(--code-bg);
+  color: var(--text);
+  padding: 14px;
+  border-radius: 16px;
+  text-align: center;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+}
+
+.filter-group label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.filter-group select {
+  min-width: 170px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font: inherit;
+  background: white;
+}
+
 .application-card {
   background: rgba(255, 255, 255, 0.8);
   padding: 20px;
@@ -434,4 +519,34 @@
   text-align: center;
   padding: 48px 24px;
   color: var(--text);
+}
+
+@media (max-width: 1024px) {
+  .board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard {
+    padding: 20px;
+  }
+
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .board {
+    grid-template-columns: 1fr;
+  }
+
+  .action-row {
+    flex-direction: column;
+  }
 }
