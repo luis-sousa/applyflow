@@ -23,12 +23,27 @@ export type Application = {
 export type CreateApplicationRequest = Omit<Application, 'id'>
 export type UpdateApplicationRequest = Partial<Omit<Application, 'id'>>
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public body: unknown = null
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 type AuthRequest = {
   email: string
   password: string
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? ''
+const apiBaseUrl =
+  typeof import.meta !== 'undefined' &&
+  typeof import.meta.env !== 'undefined'
+    ? import.meta.env.VITE_API_BASE_URL ?? ''
+    : ''
 
 async function fetchJson<T>(
   path: string,
@@ -45,11 +60,39 @@ async function fetchJson<T>(
   })
 
   const text = await response.text()
-  const data = text ? JSON.parse(text) : null
+  let data: unknown = null
+
+  if (text) {
+    try {
+      data = JSON.parse(text)
+    } catch {
+      data = text
+    }
+  }
 
   if (!response.ok) {
-    const errorMessage = data?.error || data?.message || response.statusText
-    throw new Error(errorMessage ?? 'Request failed')
+    let errorMessage = 'Request failed. Please try again.'
+
+    if (response.status === 401 || response.status === 403) {
+      errorMessage = 'Authentication failed. Please sign in again.'
+    } else if (response.status === 404) {
+      errorMessage = 'Resource not found.'
+    } else if (response.status >= 500) {
+      errorMessage = 'Server error. Please try again later.'
+    }
+
+    if (typeof data === 'object' && data !== null) {
+      const body = data as Record<string, unknown>
+      if (typeof body.error === 'string') {
+        errorMessage = body.error
+      } else if (typeof body.message === 'string') {
+        errorMessage = body.message
+      }
+    } else if (typeof data === 'string' && data.length > 0) {
+      errorMessage = data
+    }
+
+    throw new ApiError(errorMessage, response.status, data)
   }
 
   return data as T
@@ -117,7 +160,17 @@ export async function getApplication(
     token
   )
 }
+export function formatError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message
+  }
 
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return 'An unexpected error occurred. Please try again.'
+}
 export async function updateApplication(
   id: string,
   request: UpdateApplicationRequest,

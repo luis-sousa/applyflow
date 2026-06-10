@@ -1,6 +1,7 @@
 import './App.css'
 import { AuthProvider, useAuth } from './auth'
 import { Dashboard } from './Dashboard'
+import { formatError } from './api'
 import { useState, type FormEvent } from 'react'
 
 function App() {
@@ -45,7 +46,7 @@ function Main() {
         await auth.register(email, password)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Request failed')
+      setError(formatError(err))
     } finally {
       setLoading(false)
     }

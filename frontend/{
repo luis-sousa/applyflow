@@ -1,0 +1,28 @@
+At line:1 char:86
++ ... __/sanity.test.ts -Value import { it, expect } from " vitest\; it(\sa ...
++                                                           ~~~~~~~
+Unexpected token 'vitest\' in expression or statement.
+At line:1 char:106
++ ... .ts -Value import { it, expect } from " vitest\; it(\sanity\, () = ex ...
++                                                                 ~
+Missing argument in parameter list.
+At line:1 char:109
++ ... s -Value import { it, expect } from " vitest\; it(\sanity\, () = expe ...
++                                                                  ~
+An expression was expected after '('.
+At line:1 char:131
++ ... expect } from " vitest\; it(\sanity\, () = expect(true).toBe(true) }) ...
++                                                                  ~
+Missing ')' in method call.
+At line:1 char:137
++ ... } from " vitest\; it(\sanity\, () = expect(true).toBe(true) })\ ; npx ...
++                                                                 ~
+Unexpected token '}' in expression or statement.
+At line:1 char:138
++ ...  from " vitest\; it(\sanity\, () = expect(true).toBe(true) })\ ; npx  ...
++                                                                 ~
+Unexpected token ')' in expression or statement.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordEx 
+   ception
+    + FullyQualifiedErrorId : UnexpectedToken
+ 

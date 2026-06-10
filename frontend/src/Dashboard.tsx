@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from './auth'
 import * as api from './api'
+import { formatError } from './api'
 
 export function Dashboard() {
   const auth = useAuth()
@@ -39,7 +40,7 @@ export function Dashboard() {
       const data = await api.listApplications(auth.token)
       setApplications(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load applications')
+      setError(formatError(err))
     } finally {
       setIsLoading(false)
     }
@@ -105,13 +106,7 @@ export function Dashboard() {
       resetForm()
       await loadApplications()
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : isEditing
-            ? 'Failed to update application'
-            : 'Failed to create application'
-      )
+      setError(formatError(err))
     }
   }
 
@@ -124,7 +119,7 @@ export function Dashboard() {
       await api.deleteApplication(id, auth.token)
       await loadApplications()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete application')
+      setError(formatError(err))
     }
   }
 
