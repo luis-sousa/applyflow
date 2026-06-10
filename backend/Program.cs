@@ -60,6 +60,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapAuthEndpoints();
+app.MapApplicationEndpoints();
 
 
 

@@ -1,5 +1,6 @@
 import './App.css'
 import { AuthProvider, useAuth } from './auth'
+import { Dashboard } from './Dashboard'
 import { useState, type FormEvent } from 'react'
 
 function App() {
@@ -23,17 +24,7 @@ function Main() {
   }
 
   if (auth.user) {
-    return (
-      <div className="page-shell">
-        <div className="card">
-          <h1>Welcome back</h1>
-          <p>Signed in as <strong>{auth.user.email}</strong></p>
-          <button type="button" className="primary-button" onClick={auth.logout}>
-            Sign out
-          </button>
-        </div>
-      </div>
-    )
+    return <Dashboard />
   }
 
   const title = mode === 'login' ? 'Sign in' : 'Create account'
