@@ -43,7 +43,7 @@ function DroppableColumn({ id, isOver, children }: DroppableColumnProps) {
 type DraggableCardProps = {
   app: api.Application
   onEdit: (application: api.Application) => void
-  onDelete: (id: string) => void
+  onDelete: (application: api.Application) => void
 }
 
 function DraggableCard({ app, onEdit, onDelete }: DraggableCardProps) {
@@ -85,7 +85,7 @@ function DraggableCard({ app, onEdit, onDelete }: DraggableCardProps) {
           type="button"
           className="delete-button"
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => onDelete(app.id)}
+          onClick={() => onDelete(app)}
         >
           Delete
         </button>
@@ -104,6 +104,7 @@ export function Dashboard() {
   const [showForm, setShowForm] = useState(false)
   const [editingApplicationId, setEditingApplicationId] = useState<string | null>(null)
   const [hoverStatus, setHoverStatus] = useState<api.Application['status'] | null>(null)
+  const [deleteCandidate, setDeleteCandidate] = useState<api.Application | null>(null)
   const [formData, setFormData] = useState<{
     title: string
     companyName: string
@@ -238,16 +239,26 @@ export function Dashboard() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!auth.token || !window.confirm('Are you sure?')) return
+  const handleDelete = (application: api.Application) => {
+    setDeleteCandidate(application)
+  }
+
+  const cancelDelete = () => {
+    setDeleteCandidate(null)
+  }
+
+  const confirmDelete = async () => {
+    if (!auth.token || !deleteCandidate) return
 
     setError(null)
 
     try {
-      await api.deleteApplication(id, auth.token)
+      await api.deleteApplication(deleteCandidate.id, auth.token)
       await loadApplications()
     } catch (err) {
       setError(formatError(err))
+    } finally {
+      setDeleteCandidate(null)
     }
   }
 
@@ -422,6 +433,32 @@ export function Dashboard() {
           )}
         </div>
       </div>
+
+      {deleteCandidate && (
+        <div className="modal-overlay" role="presentation" onClick={cancelDelete}>
+          <div
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-confirm-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="delete-confirm-title">Delete application?</h2>
+            <p>
+              Are you sure you want to delete <strong>{deleteCandidate.title}</strong> at{' '}
+              <strong>{deleteCandidate.companyName}</strong>? This action cannot be undone.
+            </p>
+            <div className="modal-actions">
+              <button type="button" className="secondary-button" onClick={cancelDelete}>
+                Cancel
+              </button>
+              <button type="button" className="delete-button" onClick={confirmDelete}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
