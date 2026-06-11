@@ -1,11 +1,16 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import type { DragEndEvent, DragOverEvent } from '@dnd-kit/core'
+import { toast } from 'sonner'
 import { useAuth } from './auth'
 import * as api from './api'
 import { formatError } from './api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Card,
   CardHeader,
@@ -13,6 +18,39 @@ import {
   CardContent,
   CardFooter,
 } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
 type StatusBadge = {
@@ -30,6 +68,22 @@ const STATUS_BADGES: Record<string, StatusBadge> = {
 
 function getStatusBadge(status: string): StatusBadge {
   return STATUS_BADGES[status] ?? { variant: 'secondary' }
+}
+
+const STATUSES: api.Application['status'][] = [
+  'Applied',
+  'Interviewing',
+  'Offered',
+  'Accepted',
+  'Rejected',
+]
+
+const EMPTY_FORM = {
+  title: '',
+  companyName: '',
+  status: 'Applied' as api.Application['status'],
+  appliedDate: new Date().toISOString().split('T')[0],
+  notes: '',
 }
 
 interface DroppableColumnProps {
@@ -114,30 +168,44 @@ function DraggableCard({ app, onEdit, onDelete }: DraggableCardProps) {
   )
 }
 
+function ColumnSkeleton() {
+  return (
+    <div className="flex min-h-[320px] flex-col gap-4 rounded-2xl border bg-muted/40 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <Skeleton className="h-5 w-24" />
+        <Skeleton className="h-6 w-9 rounded-full" />
+      </div>
+      <div className="flex flex-col gap-4">
+        {Array.from({ length: 2 }).map((_, index) => (
+          <div key={index} className="rounded-xl border bg-card p-4">
+            <div className="flex items-start justify-between gap-2">
+              <Skeleton className="h-5 w-2/3" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+            </div>
+            <Skeleton className="mt-3 h-4 w-1/2" />
+            <Skeleton className="mt-2 h-3 w-1/3" />
+            <div className="mt-4 flex gap-2">
+              <Skeleton className="h-8 flex-1" />
+              <Skeleton className="h-8 flex-1" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function Dashboard() {
   const auth = useAuth()
   const [applications, setApplications] = useState<api.Application[]>([])
   const [filteredStatus, setFilteredStatus] = useState<'All' | api.Application['status']>('All')
   const [companyFilter, setCompanyFilter] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [showForm, setShowForm] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
   const [editingApplicationId, setEditingApplicationId] = useState<string | null>(null)
   const [hoverStatus, setHoverStatus] = useState<api.Application['status'] | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<api.Application | null>(null)
-  const [formData, setFormData] = useState<{
-    title: string
-    companyName: string
-    status: api.Application['status']
-    appliedDate: string
-    notes: string
-  }>( {
-    title: '',
-    companyName: '',
-    status: 'Applied',
-    appliedDate: new Date().toISOString().split('T')[0],
-    notes: ''
-  })
+  const [formData, setFormData] = useState(EMPTY_FORM)
 
   const isEditing = editingApplicationId !== null
   const normalizedCompanyFilter = companyFilter.trim().toLowerCase()
@@ -148,25 +216,16 @@ export function Dashboard() {
     return matchesStatus && matchesCompany
   })
 
-  const statuses: api.Application['status'][] = [
-    'Applied',
-    'Interviewing',
-    'Offered',
-    'Accepted',
-    'Rejected'
-  ]
-
   const loadApplications = async () => {
     if (!auth.token) return
 
     setIsLoading(true)
-    setError(null)
 
     try {
       const data = await api.listApplications(auth.token)
       setApplications(data)
     } catch (err) {
-      setError(formatError(err))
+      toast.error(formatError(err))
     } finally {
       setIsLoading(false)
     }
@@ -176,16 +235,16 @@ export function Dashboard() {
     loadApplications()
   }, [auth.token])
 
-  const resetForm = () => {
+  const closeDialog = () => {
+    setDialogOpen(false)
     setEditingApplicationId(null)
-    setFormData({
-      title: '',
-      companyName: '',
-      status: 'Applied',
-      appliedDate: new Date().toISOString().split('T')[0],
-      notes: ''
-    })
-    setShowForm(false)
+    setFormData(EMPTY_FORM)
+  }
+
+  const openCreateDialog = () => {
+    setEditingApplicationId(null)
+    setFormData(EMPTY_FORM)
+    setDialogOpen(true)
   }
 
   const handleEdit = (application: api.Application) => {
@@ -197,7 +256,7 @@ export function Dashboard() {
       appliedDate: new Date(application.appliedDate).toISOString().split('T')[0],
       notes: application.notes ?? ''
     })
-    setShowForm(true)
+    setDialogOpen(true)
   }
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -214,20 +273,17 @@ export function Dashboard() {
     const newStatus = over.id as api.Application['status']
     if (!application || application.status === newStatus) return
 
-    setError(null)
     try {
       await api.updateApplication(application.id, { status: newStatus }, auth.token)
       await loadApplications()
     } catch (err) {
-      setError(formatError(err))
+      toast.error(formatError(err))
     }
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!auth.token) return
-
-    setError(null)
 
     try {
       if (isEditing && editingApplicationId) {
@@ -242,6 +298,7 @@ export function Dashboard() {
           },
           auth.token
         )
+        toast.success('Application updated')
       } else {
         await api.createApplication(
           {
@@ -250,12 +307,13 @@ export function Dashboard() {
           } as api.CreateApplicationRequest,
           auth.token
         )
+        toast.success('Application created')
       }
 
-      resetForm()
+      closeDialog()
       await loadApplications()
     } catch (err) {
-      setError(formatError(err))
+      toast.error(formatError(err))
     }
   }
 
@@ -270,167 +328,86 @@ export function Dashboard() {
   const confirmDelete = async () => {
     if (!auth.token || !deleteCandidate) return
 
-    setError(null)
-
     try {
       await api.deleteApplication(deleteCandidate.id, auth.token)
+      toast.success('Application deleted')
       await loadApplications()
     } catch (err) {
-      setError(formatError(err))
+      toast.error(formatError(err))
     } finally {
       setDeleteCandidate(null)
     }
   }
 
-  const boardSections = statuses.map((status) => ({
+  const boardSections = STATUSES.map((status) => ({
     status,
     applications: filteredApplications.filter((application) => application.status === status)
   }))
 
+  const initials = (auth.user?.email ?? '?').slice(0, 1).toUpperCase()
+
   return (
     <div className="flex min-h-svh flex-col bg-background">
-      <header className="flex items-center justify-between border-b px-8 py-6">
-        <div>
-          <h1 className="m-0 text-2xl font-semibold">Application Tracker</h1>
-          <p className="text-sm text-muted-foreground">
-            Hello, <strong className="text-foreground">{auth.user?.email}</strong>
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={auth.logout}>
-          Sign out
-        </Button>
+      <header className="flex items-center justify-between border-b px-8 py-4">
+        <h1 className="m-0 text-xl font-semibold">Application Tracker</h1>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="flex items-center gap-2 px-2">
+              <span className="flex size-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                {initials}
+              </span>
+              <span className="hidden text-sm font-medium sm:inline">{auth.user?.email}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>{auth.user?.email}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={auth.logout}>Sign out</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </header>
 
       <div className="mx-auto w-full max-w-6xl flex-1 p-8">
-        {error && (
-          <div className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-
         <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-          <div className="flex flex-wrap items-end gap-4">
-            <label className="grid gap-2 text-sm font-medium">
-              Filter status
-              <select
-                className="min-w-[170px] rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="grid gap-1.5">
+              <Label>Filter status</Label>
+              <Select
                 value={filteredStatus}
-                onChange={(e) => setFilteredStatus(e.target.value as 'All' | api.Application['status'])}
+                onValueChange={(value) => setFilteredStatus(value as 'All' | api.Application['status'])}
               >
-                <option value="All">All statuses</option>
-                <option value="Applied">Applied</option>
-                <option value="Interviewing">Interviewing</option>
-                <option value="Offered">Offered</option>
-                <option value="Accepted">Accepted</option>
-                <option value="Rejected">Rejected</option>
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Filter company
-              <input
+                <SelectTrigger className="w-[170px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All statuses</SelectItem>
+                  {STATUSES.map((status) => (
+                    <SelectItem key={status} value={status}>{status}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Filter company</Label>
+              <Input
                 type="text"
                 placeholder="Search by company"
-                className="rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                className="w-[200px]"
                 value={companyFilter}
                 onChange={(e) => setCompanyFilter(e.target.value)}
               />
-            </label>
-          </div>
-          <Button
-            onClick={() => {
-              if (isEditing) {
-                resetForm()
-                return
-              }
-              setShowForm(!showForm)
-            }}
-          >
-            {showForm ? (isEditing ? 'Cancel edit' : 'Cancel') : 'New Application'}
-          </Button>
-        </div>
-
-        {showForm && (
-          <form onSubmit={handleSubmit} className="mb-8 grid gap-4 rounded-2xl border bg-card p-6">
-            <label className="grid gap-2 text-sm font-medium">
-              Position Title
-              <input
-                type="text"
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                value={formData.title}
-                onChange={(e) =>
-                  setFormData({ ...formData, title: e.target.value })
-                }
-                required
-              />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Company
-              <input
-                type="text"
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                value={formData.companyName}
-                onChange={(e) =>
-                  setFormData({ ...formData, companyName: e.target.value })
-                }
-                required
-              />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Status
-              <select
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                value={formData.status}
-                onChange={(e) => {
-                  const status = e.target.value as api.Application['status']
-                  setFormData({ ...formData, status })
-                }}
-              >
-                <option>Applied</option>
-                <option>Interviewing</option>
-                <option>Offered</option>
-                <option>Accepted</option>
-                <option>Rejected</option>
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Applied Date
-              <input
-                type="date"
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                value={formData.appliedDate}
-                onChange={(e) =>
-                  setFormData({ ...formData, appliedDate: e.target.value })
-                }
-                required
-              />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Notes
-              <textarea
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                value={formData.notes}
-                onChange={(e) =>
-                  setFormData({ ...formData, notes: e.target.value })
-                }
-                rows={3}
-              />
-            </label>
-            <div className="flex gap-3">
-              <Button type="submit">
-                {isEditing ? 'Update Application' : 'Create Application'}
-              </Button>
-              {isEditing && (
-                <Button type="button" variant="outline" onClick={resetForm}>
-                  Cancel edit
-                </Button>
-              )}
             </div>
-          </form>
-        )}
+          </div>
+          <Button onClick={openCreateDialog}>New Application</Button>
+        </div>
 
         <div className="w-full">
           {isLoading ? (
-            <p className="text-muted-foreground">Loading applications...</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              {STATUSES.map((status) => (
+                <ColumnSkeleton key={status} />
+              ))}
+            </div>
           ) : filteredApplications.length === 0 ? (
             <p className="py-12 text-center text-muted-foreground">No applications match this filter.</p>
           ) : (
@@ -470,37 +447,99 @@ export function Dashboard() {
         </div>
       </div>
 
-      {deleteCandidate && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
-          role="presentation"
-          onClick={cancelDelete}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl border bg-card p-6 text-card-foreground shadow-sm"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="delete-confirm-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 id="delete-confirm-title" className="text-lg font-semibold">
-              Delete application?
-            </h2>
-            <p className="mt-2 mb-6 text-sm text-muted-foreground">
-              Are you sure you want to delete <strong className="text-foreground">{deleteCandidate.title}</strong> at{' '}
-              <strong className="text-foreground">{deleteCandidate.companyName}</strong>? This action cannot be undone.
-            </p>
-            <div className="flex justify-end gap-3">
-              <Button type="button" variant="outline" onClick={cancelDelete}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => (open ? setDialogOpen(true) : closeDialog())}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{isEditing ? 'Edit application' : 'New application'}</DialogTitle>
+            <DialogDescription>
+              {isEditing
+                ? 'Update the details of this application.'
+                : 'Track a new job application.'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="grid gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="title">Position Title</Label>
+              <Input
+                id="title"
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                required
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="companyName">Company</Label>
+              <Input
+                id="companyName"
+                type="text"
+                value={formData.companyName}
+                onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                required
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Status</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value) => setFormData({ ...formData, status: value as api.Application['status'] })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUSES.map((status) => (
+                    <SelectItem key={status} value={status}>{status}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="appliedDate">Applied Date</Label>
+              <Input
+                id="appliedDate"
+                type="date"
+                value={formData.appliedDate}
+                onChange={(e) => setFormData({ ...formData, appliedDate: e.target.value })}
+                required
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea
+                id="notes"
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows={3}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeDialog}>
                 Cancel
               </Button>
-              <Button type="button" variant="destructive" onClick={confirmDelete}>
-                Delete
+              <Button type="submit">
+                {isEditing ? 'Update Application' : 'Create Application'}
               </Button>
-            </div>
-          </div>
-        </div>
-      )}
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteCandidate !== null} onOpenChange={(open) => !open && cancelDelete()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete application?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong className="text-foreground">{deleteCandidate?.title}</strong> at{' '}
+              <strong className="text-foreground">{deleteCandidate?.companyName}</strong>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelDelete}>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
