@@ -1,16 +1,109 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core'
+import type { DragEndEvent, DragOverEvent } from '@dnd-kit/core'
 import { useAuth } from './auth'
 import * as api from './api'
 import { formatError } from './api'
+
+const STATUS_COLORS: Record<string, string> = {
+  Applied: '#999',
+  Interviewing: '#3b82f6',
+  Offered: '#10b981',
+  Accepted: '#8b5cf6',
+  Rejected: '#ef4444'
+}
+
+function getStatusColor(status: string) {
+  return STATUS_COLORS[status] || '#999'
+}
+
+interface DroppableColumnProps {
+  id: api.Application['status']
+  isOver: boolean
+  children: ReactNode
+}
+
+function DroppableColumn({ id, isOver, children }: DroppableColumnProps) {
+  const { setNodeRef } = useDroppable({ id })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="board-column"
+      style={{
+        backgroundColor: isOver ? 'rgba(59, 130, 246, 0.08)' : undefined,
+        border: isOver ? '2px dashed #2563eb' : undefined
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+type DraggableCardProps = {
+  app: api.Application
+  onEdit: (application: api.Application) => void
+  onDelete: (id: string) => void
+}
+
+function DraggableCard({ app, onEdit, onDelete }: DraggableCardProps) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: app.id })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="application-card"
+      style={{
+        transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+        opacity: isDragging ? 0.5 : 1
+      }}
+      {...attributes}
+      {...listeners}
+    >
+      <div className="card-header">
+        <h3>{app.title}</h3>
+        <span
+          className="status-badge"
+          style={{ backgroundColor: getStatusColor(app.status) }}
+        >
+          {app.status}
+        </span>
+      </div>
+      <p className="company">{app.companyName}</p>
+      <p className="date">Applied: {new Date(app.appliedDate).toLocaleDateString()}</p>
+      {app.notes && <p className="notes">{app.notes}</p>}
+      <div className="action-row">
+        <button
+          type="button"
+          className="secondary-button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => onEdit(app)}
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          className="delete-button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => onDelete(app.id)}
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export function Dashboard() {
   const auth = useAuth()
   const [applications, setApplications] = useState<api.Application[]>([])
   const [filteredStatus, setFilteredStatus] = useState<'All' | api.Application['status']>('All')
+  const [companyFilter, setCompanyFilter] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingApplicationId, setEditingApplicationId] = useState<string | null>(null)
+  const [hoverStatus, setHoverStatus] = useState<api.Application['status'] | null>(null)
   const [formData, setFormData] = useState<{
     title: string
     companyName: string
@@ -26,9 +119,21 @@ export function Dashboard() {
   })
 
   const isEditing = editingApplicationId !== null
-  const filteredApplications = filteredStatus === 'All'
-    ? applications
-    : applications.filter((application) => application.status === filteredStatus)
+  const normalizedCompanyFilter = companyFilter.trim().toLowerCase()
+  const filteredApplications = applications.filter((application) => {
+    const matchesStatus = filteredStatus === 'All' || application.status === filteredStatus
+    const matchesCompany = normalizedCompanyFilter === '' ||
+      application.companyName.toLowerCase().includes(normalizedCompanyFilter)
+    return matchesStatus && matchesCompany
+  })
+
+  const statuses: api.Application['status'][] = [
+    'Applied',
+    'Interviewing',
+    'Offered',
+    'Accepted',
+    'Rejected'
+  ]
 
   const loadApplications = async () => {
     if (!auth.token) return
@@ -72,6 +177,29 @@ export function Dashboard() {
       notes: application.notes ?? ''
     })
     setShowForm(true)
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    setHoverStatus((event.over?.id as api.Application['status'] | undefined) ?? null)
+  }
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    setHoverStatus(null)
+
+    if (!auth.token || !over) return
+
+    const application = applications.find((app) => app.id === active.id)
+    const newStatus = over.id as api.Application['status']
+    if (!application || application.status === newStatus) return
+
+    setError(null)
+    try {
+      await api.updateApplication(application.id, { status: newStatus }, auth.token)
+      await loadApplications()
+    } catch (err) {
+      setError(formatError(err))
+    }
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -123,25 +251,6 @@ export function Dashboard() {
     }
   }
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      Applied: '#999',
-      Interviewing: '#3b82f6',
-      Offered: '#10b981',
-      Accepted: '#8b5cf6',
-      Rejected: '#ef4444'
-    }
-    return colors[status] || '#999'
-  }
-
-  const statuses: api.Application['status'][] = [
-    'Applied',
-    'Interviewing',
-    'Offered',
-    'Accepted',
-    'Rejected'
-  ]
-
   const boardSections = statuses.map((status) => ({
     status,
     applications: filteredApplications.filter((application) => application.status === status)
@@ -177,6 +286,15 @@ export function Dashboard() {
                 <option value="Accepted">Accepted</option>
                 <option value="Rejected">Rejected</option>
               </select>
+            </label>
+            <label>
+              Filter company
+              <input
+                type="text"
+                placeholder="Search by company"
+                value={companyFilter}
+                onChange={(e) => setCompanyFilter(e.target.value)}
+              />
             </label>
           </div>
           <button
@@ -275,56 +393,32 @@ export function Dashboard() {
           ) : filteredApplications.length === 0 ? (
             <p className="empty-state">No applications match this filter.</p>
           ) : (
-            <div className="board">
-              {boardSections.map((section) => (
-                <div key={section.status} className="board-column">
-                  <div className="board-column-header">
-                    <h2>{section.status}</h2>
-                    <span className="board-column-count">{section.applications.length}</span>
-                  </div>
-                  <div className="board-column-list">
-                    {section.applications.length === 0 ? (
-                      <div className="empty-column">No applications</div>
-                    ) : (
-                      section.applications.map((app) => (
-                        <div key={app.id} className="application-card">
-                          <div className="card-header">
-                            <h3>{app.title}</h3>
-                            <span
-                              className="status-badge"
-                              style={{ backgroundColor: getStatusColor(app.status) }}
-                            >
-                              {app.status}
-                            </span>
-                          </div>
-                          <p className="company">{app.companyName}</p>
-                          <p className="date">
-                            Applied: {new Date(app.appliedDate).toLocaleDateString()}
-                          </p>
-                          {app.notes && <p className="notes">{app.notes}</p>}
-                          <div className="action-row">
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              onClick={() => handleEdit(app)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="delete-button"
-                              onClick={() => handleDelete(app.id)}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <DndContext onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+              <div className="board">
+                {boardSections.map((section) => (
+                  <DroppableColumn key={section.status} id={section.status} isOver={section.status === hoverStatus}>
+                    <div className="board-column-header">
+                      <h2>{section.status}</h2>
+                      <span className="board-column-count">{section.applications.length}</span>
+                    </div>
+                    <div className="board-column-list">
+                      {section.applications.length === 0 ? (
+                        <div className="empty-column">No applications</div>
+                      ) : (
+                        section.applications.map((app) => (
+                          <DraggableCard
+                            key={app.id}
+                            app={app}
+                            onEdit={handleEdit}
+                            onDelete={handleDelete}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </DroppableColumn>
+                ))}
+              </div>
+            </DndContext>
           )}
         </div>
       </div>
