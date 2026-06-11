@@ -11,6 +11,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Calendar } from '@/components/ui/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { CalendarIcon } from 'lucide-react'
+import { format } from 'date-fns'
 import {
   Card,
   CardHeader,
@@ -206,6 +210,7 @@ export function Dashboard() {
   const [hoverStatus, setHoverStatus] = useState<api.Application['status'] | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<api.Application | null>(null)
   const [formData, setFormData] = useState(EMPTY_FORM)
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
   const isEditing = editingApplicationId !== null
   const normalizedCompanyFilter = companyFilter.trim().toLowerCase()
@@ -239,11 +244,13 @@ export function Dashboard() {
     setDialogOpen(false)
     setEditingApplicationId(null)
     setFormData(EMPTY_FORM)
+    setFormErrors({})
   }
 
   const openCreateDialog = () => {
     setEditingApplicationId(null)
     setFormData(EMPTY_FORM)
+    setFormErrors({})
     setDialogOpen(true)
   }
 
@@ -256,7 +263,42 @@ export function Dashboard() {
       appliedDate: new Date(application.appliedDate).toISOString().split('T')[0],
       notes: application.notes ?? ''
     })
+    setFormErrors({})
     setDialogOpen(true)
+  }
+
+  const validateForm = () => {
+    const errors: Record<string, string> = {}
+
+    if (!formData.title.trim()) {
+      errors.title = 'Please enter the job title you applied for.'
+    } else if (formData.title.trim().length < 2) {
+      errors.title = 'Job title must be at least 2 characters long.'
+    }
+
+    if (!formData.companyName.trim()) {
+      errors.companyName = 'Please enter the company name.'
+    } else if (formData.companyName.trim().length < 2) {
+      errors.companyName = 'Company name must be at least 2 characters long.'
+    }
+
+    if (!formData.appliedDate) {
+      errors.appliedDate = 'Please select the date you applied.'
+    } else {
+      const appliedDate = new Date(formData.appliedDate)
+      const today = new Date()
+      today.setHours(23, 59, 59, 999)
+      if (appliedDate.getTime() > today.getTime()) {
+        errors.appliedDate = 'Applied date cannot be in the future.'
+      }
+    }
+
+    if (formData.notes.length > 1000) {
+      errors.notes = 'Notes must be 1000 characters or fewer.'
+    }
+
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
   }
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -284,6 +326,7 @@ export function Dashboard() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!auth.token) return
+    if (!validateForm()) return
 
     try {
       if (isEditing && editingApplicationId) {
@@ -349,7 +392,7 @@ export function Dashboard() {
   return (
     <div className="flex min-h-svh flex-col bg-background">
       <header className="flex items-center justify-between border-b px-8 py-4">
-        <h1 className="m-0 text-xl font-semibold">Application Tracker</h1>
+        <h1 className="m-0 text-xl font-semibold">Job Application Tracker</h1>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">
@@ -446,7 +489,7 @@ export function Dashboard() {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => (open ? setDialogOpen(true) : closeDialog())}>
-        <DialogContent>
+        <DialogContent onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>{isEditing ? 'Edit application' : 'New application'}</DialogTitle>
             <DialogDescription>
@@ -463,8 +506,11 @@ export function Dashboard() {
                 type="text"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                required
+                aria-invalid={!!formErrors.title}
               />
+              {formErrors.title && (
+                <p className="text-sm text-destructive">{formErrors.title}</p>
+              )}
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="companyName">Company</Label>
@@ -473,8 +519,11 @@ export function Dashboard() {
                 type="text"
                 value={formData.companyName}
                 onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                required
+                aria-invalid={!!formErrors.companyName}
               />
+              {formErrors.companyName && (
+                <p className="text-sm text-destructive">{formErrors.companyName}</p>
+              )}
             </div>
             <div className="grid gap-1.5">
               <Label>Status</Label>
@@ -494,13 +543,39 @@ export function Dashboard() {
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="appliedDate">Applied Date</Label>
-              <Input
-                id="appliedDate"
-                type="date"
-                value={formData.appliedDate}
-                onChange={(e) => setFormData({ ...formData, appliedDate: e.target.value })}
-                required
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="appliedDate"
+                    type="button"
+                    variant="outline"
+                    aria-invalid={!!formErrors.appliedDate}
+                    className={cn(
+                      'w-full justify-start text-left font-normal',
+                      !formData.appliedDate && 'text-muted-foreground'
+                    )}
+                  >
+                    <CalendarIcon className="size-4" />
+                    {formData.appliedDate
+                      ? format(new Date(`${formData.appliedDate}T00:00:00`), 'PPP')
+                      : 'Pick a date'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={formData.appliedDate ? new Date(`${formData.appliedDate}T00:00:00`) : undefined}
+                    onSelect={(date) => {
+                      if (!date) return
+                      setFormData({ ...formData, appliedDate: format(date, 'yyyy-MM-dd') })
+                    }}
+                    captionLayout="dropdown"
+                  />
+                </PopoverContent>
+              </Popover>
+              {formErrors.appliedDate && (
+                <p className="text-sm text-destructive">{formErrors.appliedDate}</p>
+              )}
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="notes">Notes</Label>
@@ -508,8 +583,12 @@ export function Dashboard() {
                 id="notes"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                aria-invalid={!!formErrors.notes}
                 rows={3}
               />
+              {formErrors.notes && (
+                <p className="text-sm text-destructive">{formErrors.notes}</p>
+              )}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={closeDialog}>
