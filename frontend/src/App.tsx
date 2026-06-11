@@ -1,7 +1,7 @@
-import './App.css'
 import { AuthProvider, useAuth } from './auth'
 import { Dashboard } from './Dashboard'
 import { formatError } from './api'
+import { Button } from '@/components/ui/button'
 import { useState, type FormEvent } from 'react'
 
 function App() {
@@ -21,7 +21,11 @@ function Main() {
   const [loading, setLoading] = useState(false)
 
   if (auth.isLoading) {
-    return <div className="page-shell">Loading session...</div>
+    return (
+      <div className="flex min-h-svh items-center justify-center p-8">
+        Loading session...
+      </div>
+    )
   }
 
   if (auth.user) {
@@ -53,24 +57,26 @@ function Main() {
   }
 
   return (
-    <div className="page-shell">
-      <div className="card">
-        <h1>{title}</h1>
-        <form onSubmit={handleSubmit} className="auth-form">
-          <label>
+    <div className="flex min-h-svh items-center justify-center p-8">
+      <div className="w-full max-w-md rounded-2xl border bg-card p-8 text-card-foreground shadow-sm">
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        <form onSubmit={handleSubmit} className="mt-6 grid gap-4">
+          <label className="grid gap-2 text-sm font-medium">
             Email
             <input
               type="email"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
               autoComplete="email"
             />
           </label>
-          <label>
+          <label className="grid gap-2 text-sm font-medium">
             Password
             <input
               type="password"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
@@ -78,18 +84,23 @@ function Main() {
               minLength={6}
             />
           </label>
-          {error && <div className="error-message">{error}</div>}
-          <button type="submit" className="primary-button" disabled={loading}>
+          {error && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <Button type="submit" disabled={loading} className="w-full">
             {loading ? 'Please wait…' : buttonLabel}
-          </button>
+          </Button>
         </form>
-        <button
+        <Button
           type="button"
-          className="secondary-button"
+          variant="link"
+          className="mt-2 w-full"
           onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
         >
           {switchLabel}
-        </button>
+        </Button>
       </div>
     </div>
   )

@@ -4,17 +4,32 @@ import type { DragEndEvent, DragOverEvent } from '@dnd-kit/core'
 import { useAuth } from './auth'
 import * as api from './api'
 import { formatError } from './api'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardFooter,
+} from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 
-const STATUS_COLORS: Record<string, string> = {
-  Applied: '#999',
-  Interviewing: '#3b82f6',
-  Offered: '#10b981',
-  Accepted: '#8b5cf6',
-  Rejected: '#ef4444'
+type StatusBadge = {
+  variant: 'default' | 'secondary' | 'destructive'
+  className?: string
 }
 
-function getStatusColor(status: string) {
-  return STATUS_COLORS[status] || '#999'
+const STATUS_BADGES: Record<string, StatusBadge> = {
+  Applied: { variant: 'secondary' },
+  Interviewing: { variant: 'default' },
+  Offered: { variant: 'default', className: 'bg-amber-500 text-white' },
+  Accepted: { variant: 'default', className: 'bg-emerald-500 text-white' },
+  Rejected: { variant: 'destructive' },
+}
+
+function getStatusBadge(status: string): StatusBadge {
+  return STATUS_BADGES[status] ?? { variant: 'secondary' }
 }
 
 interface DroppableColumnProps {
@@ -29,11 +44,10 @@ function DroppableColumn({ id, isOver, children }: DroppableColumnProps) {
   return (
     <div
       ref={setNodeRef}
-      className="board-column"
-      style={{
-        backgroundColor: isOver ? 'rgba(59, 130, 246, 0.08)' : undefined,
-        border: isOver ? '2px dashed #2563eb' : undefined
-      }}
+      className={cn(
+        'flex min-h-[320px] flex-col gap-4 rounded-2xl border bg-muted/40 p-4',
+        isOver && 'border-primary border-dashed bg-primary/5'
+      )}
     >
       {children}
     </div>
@@ -48,49 +62,55 @@ type DraggableCardProps = {
 
 function DraggableCard({ app, onEdit, onDelete }: DraggableCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: app.id })
+  const badge = getStatusBadge(app.status)
 
   return (
-    <div
+    <Card
       ref={setNodeRef}
-      className="application-card"
       style={{
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-        opacity: isDragging ? 0.5 : 1
+        opacity: isDragging ? 0.5 : 1,
       }}
+      className="gap-3 py-4 transition-transform hover:-translate-y-0.5"
       {...attributes}
       {...listeners}
     >
-      <div className="card-header">
-        <h3>{app.title}</h3>
-        <span
-          className="status-badge"
-          style={{ backgroundColor: getStatusColor(app.status) }}
-        >
+      <CardHeader className="flex-row items-start justify-between gap-2 px-4">
+        <CardTitle className="text-base">{app.title}</CardTitle>
+        <Badge variant={badge.variant} className={badge.className}>
           {app.status}
-        </span>
-      </div>
-      <p className="company">{app.companyName}</p>
-      <p className="date">Applied: {new Date(app.appliedDate).toLocaleDateString()}</p>
-      {app.notes && <p className="notes">{app.notes}</p>}
-      <div className="action-row">
-        <button
+        </Badge>
+      </CardHeader>
+      <CardContent className="px-4 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">{app.companyName}</p>
+        <p className="mt-1 text-xs">Applied: {new Date(app.appliedDate).toLocaleDateString()}</p>
+        {app.notes && (
+          <p className="mt-3 rounded-md bg-muted p-2 text-sm">{app.notes}</p>
+        )}
+      </CardContent>
+      <CardFooter className="flex gap-2 px-4">
+        <Button
           type="button"
-          className="secondary-button"
+          variant="outline"
+          size="sm"
+          className="flex-1"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onEdit(app)}
         >
           Edit
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="delete-button"
+          variant="destructive"
+          size="sm"
+          className="flex-1"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onDelete(app)}
         >
           Delete
-        </button>
-      </div>
-    </div>
+        </Button>
+      </CardFooter>
+    </Card>
   )
 }
 
@@ -268,25 +288,32 @@ export function Dashboard() {
   }))
 
   return (
-    <div className="dashboard">
-      <header className="dashboard-header">
+    <div className="flex min-h-svh flex-col bg-background">
+      <header className="flex items-center justify-between border-b px-8 py-6">
         <div>
-          <h1>Application Tracker</h1>
-          <p>Hello, <strong>{auth.user?.email}</strong></p>
+          <h1 className="m-0 text-2xl font-semibold">Application Tracker</h1>
+          <p className="text-sm text-muted-foreground">
+            Hello, <strong className="text-foreground">{auth.user?.email}</strong>
+          </p>
         </div>
-        <button className="logout-button" onClick={auth.logout}>
+        <Button variant="outline" size="sm" onClick={auth.logout}>
           Sign out
-        </button>
+        </Button>
       </header>
 
-      {error && <div className="error-banner">{error}</div>}
+      <div className="mx-auto w-full max-w-6xl flex-1 p-8">
+        {error && (
+          <div className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
 
-      <div className="dashboard-content">
-        <div className="controls">
-          <div className="filter-group">
-            <label>
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <label className="grid gap-2 text-sm font-medium">
               Filter status
               <select
+                className="min-w-[170px] rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 value={filteredStatus}
                 onChange={(e) => setFilteredStatus(e.target.value as 'All' | api.Application['status'])}
               >
@@ -298,18 +325,18 @@ export function Dashboard() {
                 <option value="Rejected">Rejected</option>
               </select>
             </label>
-            <label>
+            <label className="grid gap-2 text-sm font-medium">
               Filter company
               <input
                 type="text"
                 placeholder="Search by company"
+                className="rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 value={companyFilter}
                 onChange={(e) => setCompanyFilter(e.target.value)}
               />
             </label>
           </div>
-          <button
-            className="primary-button"
+          <Button
             onClick={() => {
               if (isEditing) {
                 resetForm()
@@ -319,15 +346,16 @@ export function Dashboard() {
             }}
           >
             {showForm ? (isEditing ? 'Cancel edit' : 'Cancel') : 'New Application'}
-          </button>
+          </Button>
         </div>
 
         {showForm && (
-          <form onSubmit={handleSubmit} className="application-form">
-            <label>
+          <form onSubmit={handleSubmit} className="mb-8 grid gap-4 rounded-2xl border bg-card p-6">
+            <label className="grid gap-2 text-sm font-medium">
               Position Title
               <input
                 type="text"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 value={formData.title}
                 onChange={(e) =>
                   setFormData({ ...formData, title: e.target.value })
@@ -335,10 +363,11 @@ export function Dashboard() {
                 required
               />
             </label>
-            <label>
+            <label className="grid gap-2 text-sm font-medium">
               Company
               <input
                 type="text"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 value={formData.companyName}
                 onChange={(e) =>
                   setFormData({ ...formData, companyName: e.target.value })
@@ -346,9 +375,10 @@ export function Dashboard() {
                 required
               />
             </label>
-            <label>
+            <label className="grid gap-2 text-sm font-medium">
               Status
               <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 value={formData.status}
                 onChange={(e) => {
                   const status = e.target.value as api.Application['status']
@@ -362,10 +392,11 @@ export function Dashboard() {
                 <option>Rejected</option>
               </select>
             </label>
-            <label>
+            <label className="grid gap-2 text-sm font-medium">
               Applied Date
               <input
                 type="date"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 value={formData.appliedDate}
                 onChange={(e) =>
                   setFormData({ ...formData, appliedDate: e.target.value })
@@ -373,9 +404,10 @@ export function Dashboard() {
                 required
               />
             </label>
-            <label>
+            <label className="grid gap-2 text-sm font-medium">
               Notes
               <textarea
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 value={formData.notes}
                 onChange={(e) =>
                   setFormData({ ...formData, notes: e.target.value })
@@ -383,38 +415,42 @@ export function Dashboard() {
                 rows={3}
               />
             </label>
-            <button type="submit" className="primary-button">
-              {isEditing ? 'Update Application' : 'Create Application'}
-            </button>
-            {isEditing && (
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={resetForm}
-              >
-                Cancel edit
-              </button>
-            )}
+            <div className="flex gap-3">
+              <Button type="submit">
+                {isEditing ? 'Update Application' : 'Create Application'}
+              </Button>
+              {isEditing && (
+                <Button type="button" variant="outline" onClick={resetForm}>
+                  Cancel edit
+                </Button>
+              )}
+            </div>
           </form>
         )}
 
-        <div className="applications-list">
+        <div className="w-full">
           {isLoading ? (
-            <p>Loading applications...</p>
+            <p className="text-muted-foreground">Loading applications...</p>
           ) : filteredApplications.length === 0 ? (
-            <p className="empty-state">No applications match this filter.</p>
+            <p className="py-12 text-center text-muted-foreground">No applications match this filter.</p>
           ) : (
             <DndContext onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-              <div className="board">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 {boardSections.map((section) => (
                   <DroppableColumn key={section.status} id={section.status} isOver={section.status === hoverStatus}>
-                    <div className="board-column-header">
-                      <h2>{section.status}</h2>
-                      <span className="board-column-count">{section.applications.length}</span>
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="m-0 text-sm font-semibold tracking-wide uppercase text-foreground">
+                        {section.status}
+                      </h2>
+                      <span className="inline-flex min-w-[34px] items-center justify-center rounded-full bg-primary/10 px-3 py-1 text-sm font-bold text-primary">
+                        {section.applications.length}
+                      </span>
                     </div>
-                    <div className="board-column-list">
+                    <div className="flex flex-col gap-4">
                       {section.applications.length === 0 ? (
-                        <div className="empty-column">No applications</div>
+                        <div className="rounded-2xl bg-muted p-4 text-center text-sm text-muted-foreground">
+                          No applications
+                        </div>
                       ) : (
                         section.applications.map((app) => (
                           <DraggableCard
@@ -435,26 +471,32 @@ export function Dashboard() {
       </div>
 
       {deleteCandidate && (
-        <div className="modal-overlay" role="presentation" onClick={cancelDelete}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+          role="presentation"
+          onClick={cancelDelete}
+        >
           <div
-            className="modal-card"
+            className="w-full max-w-md rounded-2xl border bg-card p-6 text-card-foreground shadow-sm"
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-confirm-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 id="delete-confirm-title">Delete application?</h2>
-            <p>
-              Are you sure you want to delete <strong>{deleteCandidate.title}</strong> at{' '}
-              <strong>{deleteCandidate.companyName}</strong>? This action cannot be undone.
+            <h2 id="delete-confirm-title" className="text-lg font-semibold">
+              Delete application?
+            </h2>
+            <p className="mt-2 mb-6 text-sm text-muted-foreground">
+              Are you sure you want to delete <strong className="text-foreground">{deleteCandidate.title}</strong> at{' '}
+              <strong className="text-foreground">{deleteCandidate.companyName}</strong>? This action cannot be undone.
             </p>
-            <div className="modal-actions">
-              <button type="button" className="secondary-button" onClick={cancelDelete}>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="outline" onClick={cancelDelete}>
                 Cancel
-              </button>
-              <button type="button" className="delete-button" onClick={confirmDelete}>
+              </Button>
+              <Button type="button" variant="destructive" onClick={confirmDelete}>
                 Delete
-              </button>
+              </Button>
             </div>
           </div>
         </div>
