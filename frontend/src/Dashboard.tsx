@@ -359,6 +359,7 @@ export function Dashboard() {
     const previousStatus = application.status
 
     setApplications((current) => {
+      const activeIndex = current.findIndex((app) => app.id === application.id)
       const without = current.filter((app) => app.id !== application.id)
       const moved = { ...application, status: newStatus }
 
@@ -372,8 +373,14 @@ export function Dashboard() {
         )
         targetIndex = lastIndexOfStatus + 1
       } else {
-        targetIndex = without.findIndex((app) => app.id === over.id)
-        if (targetIndex === -1) targetIndex = without.length
+        const overIndex = without.findIndex((app) => app.id === over.id)
+        if (overIndex === -1) {
+          targetIndex = without.length
+        } else {
+          const overIndexInCurrent = current.findIndex((app) => app.id === over.id)
+          const movingDown = activeIndex < overIndexInCurrent
+          targetIndex = movingDown ? overIndex + 1 : overIndex
+        }
       }
 
       return [...without.slice(0, targetIndex), moved, ...without.slice(targetIndex)]
