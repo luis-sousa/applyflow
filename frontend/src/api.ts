@@ -24,13 +24,14 @@ export type CreateApplicationRequest = Omit<Application, 'id'>
 export type UpdateApplicationRequest = Partial<Omit<Application, 'id'>>
 
 export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public body: unknown = null
-  ) {
+  status: number
+  body: unknown
+
+  constructor(message: string, status: number, body: unknown = null) {
     super(message)
     this.name = 'ApiError'
+    this.status = status
+    this.body = body
   }
 }
 
