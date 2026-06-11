@@ -408,8 +408,6 @@ export function Dashboard() {
                 <ColumnSkeleton key={status} />
               ))}
             </div>
-          ) : filteredApplications.length === 0 ? (
-            <p className="py-12 text-center text-muted-foreground">No applications match this filter.</p>
           ) : (
             <DndContext onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
