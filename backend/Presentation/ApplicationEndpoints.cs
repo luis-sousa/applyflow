@@ -1,10 +1,14 @@
-using backend.Domain.Entities;
-using backend.Infrastructure;
+using backend.Application.Applications.Create;
+using backend.Application.Applications.Delete;
+using backend.Application.Applications.Get;
+using backend.Application.Applications.List;
+using backend.Application.Applications.Update;
+using backend.Application.Common;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
-namespace backend.Api;
+namespace backend.Presentation;
 
 public static class ApplicationEndpoints
 {
@@ -12,51 +16,34 @@ public static class ApplicationEndpoints
     {
         app.MapPost("/api/applications", [Authorize] async (
             ClaimsPrincipal userPrincipal,
-            ApplyFlowDbContext dbContext,
+            ISender sender,
             CreateApplicationRequest request) =>
         {
             var userId = ExtractUserId(userPrincipal);
             if (userId == Guid.Empty)
                 return Results.Unauthorized();
 
-            if (!Enum.TryParse<ApplicationStatus>(request.Status, out var status))
-                return Results.BadRequest(new { error = "Invalid status value" });
+            var result = await sender.Send(new CreateApplicationCommand(
+                userId, request.Title, request.CompanyName, request.Status, request.AppliedDate, request.Notes));
 
-            var application = new JobApplication
-            {
-                Id = Guid.NewGuid(),
-                Title = request.Title,
-                CompanyName = request.CompanyName,
-                Status = status,
-                AppliedDate = request.AppliedDate,
-                Notes = request.Notes,
-                UserId = userId
-            };
+            if (!result.IsSuccess)
+                return result.ToErrorResult();
 
-            dbContext.JobApplications.Add(application);
-            await dbContext.SaveChangesAsync();
-
-            return Results.Created($"/api/applications/{application.Id}", 
-                MapToResponse(application));
+            return Results.Created($"/api/applications/{result.Value!.Id}", result.Value);
         })
         .WithName("CreateApplication")
         .WithTags("Applications");
 
         app.MapGet("/api/applications", [Authorize] async (
             ClaimsPrincipal userPrincipal,
-            ApplyFlowDbContext dbContext) =>
+            ISender sender) =>
         {
             var userId = ExtractUserId(userPrincipal);
             if (userId == Guid.Empty)
                 return Results.Unauthorized();
 
-            var applications = await dbContext.JobApplications
-                .Where(a => a.UserId == userId)
-                .OrderByDescending(a => a.AppliedDate)
-                .Select(a => MapToResponse(a))
-                .ToListAsync();
-
-            return Results.Ok(applications);
+            var result = await sender.Send(new ListApplicationsQuery(userId));
+            return result.IsSuccess ? Results.Ok(result.Value) : result.ToErrorResult();
         })
         .WithName("ListApplications")
         .WithTags("Applications");
@@ -64,19 +51,14 @@ public static class ApplicationEndpoints
         app.MapGet("/api/applications/{id}", [Authorize] async (
             Guid id,
             ClaimsPrincipal userPrincipal,
-            ApplyFlowDbContext dbContext) =>
+            ISender sender) =>
         {
             var userId = ExtractUserId(userPrincipal);
             if (userId == Guid.Empty)
                 return Results.Unauthorized();
 
-            var application = await dbContext.JobApplications
-                .FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId);
-
-            if (application is null)
-                return Results.NotFound();
-
-            return Results.Ok(MapToResponse(application));
+            var result = await sender.Send(new GetApplicationQuery(userId, id));
+            return result.IsSuccess ? Results.Ok(result.Value) : result.ToErrorResult();
         })
         .WithName("GetApplication")
         .WithTags("Applications");
@@ -84,38 +66,17 @@ public static class ApplicationEndpoints
         app.MapPatch("/api/applications/{id}", [Authorize] async (
             Guid id,
             ClaimsPrincipal userPrincipal,
-            ApplyFlowDbContext dbContext,
+            ISender sender,
             UpdateApplicationRequest request) =>
         {
             var userId = ExtractUserId(userPrincipal);
             if (userId == Guid.Empty)
                 return Results.Unauthorized();
 
-            var application = await dbContext.JobApplications
-                .FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId);
+            var result = await sender.Send(new UpdateApplicationCommand(
+                userId, id, request.Title, request.CompanyName, request.Status, request.AppliedDate, request.Notes));
 
-            if (application is null)
-                return Results.NotFound();
-
-            if (!string.IsNullOrEmpty(request.Title))
-                application.Title = request.Title;
-            if (!string.IsNullOrEmpty(request.CompanyName))
-                application.CompanyName = request.CompanyName;
-            if (!string.IsNullOrEmpty(request.Status))
-            {
-                if (Enum.TryParse<ApplicationStatus>(request.Status, out var status))
-                    application.Status = status;
-                else
-                    return Results.BadRequest(new { error = "Invalid status value" });
-            }
-            if (request.AppliedDate.HasValue)
-                application.AppliedDate = request.AppliedDate.Value;
-            if (request.Notes != null)
-                application.Notes = request.Notes;
-
-            await dbContext.SaveChangesAsync();
-
-            return Results.Ok(MapToResponse(application));
+            return result.IsSuccess ? Results.Ok(result.Value) : result.ToErrorResult();
         })
         .WithName("UpdateApplication")
         .WithTags("Applications");
@@ -123,22 +84,14 @@ public static class ApplicationEndpoints
         app.MapDelete("/api/applications/{id}", [Authorize] async (
             Guid id,
             ClaimsPrincipal userPrincipal,
-            ApplyFlowDbContext dbContext) =>
+            ISender sender) =>
         {
             var userId = ExtractUserId(userPrincipal);
             if (userId == Guid.Empty)
                 return Results.Unauthorized();
 
-            var application = await dbContext.JobApplications
-                .FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId);
-
-            if (application is null)
-                return Results.NotFound();
-
-            dbContext.JobApplications.Remove(application);
-            await dbContext.SaveChangesAsync();
-
-            return Results.NoContent();
+            var result = await sender.Send(new DeleteApplicationCommand(userId, id));
+            return result.IsSuccess ? Results.NoContent() : result.ToErrorResult();
         })
         .WithName("DeleteApplication")
         .WithTags("Applications");
@@ -150,23 +103,11 @@ public static class ApplicationEndpoints
     {
         var userId = userPrincipal.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? userPrincipal.FindFirst("sub")?.Value;
-        
+
         if (string.IsNullOrWhiteSpace(userId) || !Guid.TryParse(userId, out var parsedUserId))
             return Guid.Empty;
 
         return parsedUserId;
-    }
-
-    private static ApplicationResponse MapToResponse(JobApplication application)
-    {
-        return new ApplicationResponse(
-            application.Id,
-            application.Title,
-            application.CompanyName,
-            application.Status.ToString(),
-            application.AppliedDate,
-            application.Notes
-        );
     }
 }
 
@@ -187,12 +128,3 @@ public sealed record UpdateApplicationRequest
     public DateTime? AppliedDate { get; init; }
     public string? Notes { get; init; }
 }
-
-public sealed record ApplicationResponse(
-    Guid Id,
-    string Title,
-    string CompanyName,
-    string Status,
-    DateTime AppliedDate,
-    string? Notes
-);

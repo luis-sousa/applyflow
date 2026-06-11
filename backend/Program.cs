@@ -1,5 +1,7 @@
-using backend.Api;
+using backend.Application.Common;
 using backend.Infrastructure;
+using backend.Infrastructure.Auth;
+using backend.Presentation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -17,6 +19,10 @@ var audience = builder.Configuration["JwtSettings:Audience"] ?? "ApplyFlowUsers"
 
 builder.Services.AddDbContext<ApplyFlowDbContext>(options =>
     options.UseNpgsql(connectionString));
+
+builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
+builder.Services.AddSingleton<IJwtTokenGenerator, JwtTokenGenerator>();
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<Program>());
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
