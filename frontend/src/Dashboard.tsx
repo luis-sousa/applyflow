@@ -1,5 +1,8 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core'
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { DndContext, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
+import type { DragStartEvent } from '@dnd-kit/core'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { DragEndEvent, DragOverEvent } from '@dnd-kit/core'
 import { toast } from 'sonner'
 import { useAuth } from './auth'
@@ -118,21 +121,17 @@ type DraggableCardProps = {
   onDelete: (application: api.Application) => void
 }
 
-function DraggableCard({ app, onEdit, onDelete }: DraggableCardProps) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: app.id })
+type ApplicationCardProps = DraggableCardProps & {
+  className?: string
+  style?: CSSProperties
+  refProp?: (node: HTMLElement | null) => void
+}
+
+function ApplicationCard({ app, onEdit, onDelete, className, style, refProp, ...rest }: ApplicationCardProps & Record<string, unknown>) {
   const badge = getStatusBadge(app.status)
 
   return (
-    <Card
-      ref={setNodeRef}
-      style={{
-        transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-        opacity: isDragging ? 0.5 : 1,
-      }}
-      className="gap-3 py-4 transition-transform hover:-translate-y-0.5"
-      {...attributes}
-      {...listeners}
-    >
+    <Card ref={refProp} style={style} className={className} {...rest}>
       <CardHeader className="flex-row items-start justify-between gap-2 px-4">
         <CardTitle className="text-base">{app.title}</CardTitle>
         <Badge variant={badge.variant} className={badge.className}>
@@ -169,6 +168,27 @@ function DraggableCard({ app, onEdit, onDelete }: DraggableCardProps) {
         </Button>
       </CardFooter>
     </Card>
+  )
+}
+
+function DraggableCard({ app, onEdit, onDelete }: DraggableCardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: app.id })
+
+  return (
+    <ApplicationCard
+      app={app}
+      onEdit={onEdit}
+      onDelete={onDelete}
+      refProp={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0 : 1,
+      }}
+      className="gap-3 py-4 hover:-translate-y-0.5 hover:shadow-md cursor-grab"
+      {...attributes}
+      {...listeners}
+    />
   )
 }
 
@@ -209,6 +229,7 @@ export function Dashboard() {
   const [editingApplicationId, setEditingApplicationId] = useState<string | null>(null)
   const [hoverStatus, setHoverStatus] = useState<api.Application['status'] | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<api.Application | null>(null)
+  const [activeApplication, setActiveApplication] = useState<api.Application | null>(null)
   const [formData, setFormData] = useState(EMPTY_FORM)
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
@@ -301,24 +322,69 @@ export function Dashboard() {
     return Object.keys(errors).length === 0
   }
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    })
+  )
+
+  const getStatusForOverId = (overId: string | number | undefined): api.Application['status'] | null => {
+    if (overId == null) return null
+    if ((STATUSES as readonly string[]).includes(overId as string)) {
+      return overId as api.Application['status']
+    }
+    return applications.find((app) => app.id === overId)?.status ?? null
+  }
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveApplication(applications.find((app) => app.id === event.active.id) ?? null)
+  }
+
   const handleDragOver = (event: DragOverEvent) => {
-    setHoverStatus((event.over?.id as api.Application['status'] | undefined) ?? null)
+    setHoverStatus(getStatusForOverId(event.over?.id))
   }
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
     setHoverStatus(null)
+    setActiveApplication(null)
 
     if (!auth.token || !over) return
 
     const application = applications.find((app) => app.id === active.id)
-    const newStatus = over.id as api.Application['status']
-    if (!application || application.status === newStatus) return
+    const newStatus = getStatusForOverId(over.id)
+    if (!application || !newStatus) return
+
+    const previousApplications = applications
+    const previousStatus = application.status
+
+    setApplications((current) => {
+      const without = current.filter((app) => app.id !== application.id)
+      const moved = { ...application, status: newStatus }
+
+      let targetIndex: number
+      if (over.id === application.id) {
+        targetIndex = without.length
+      } else if ((STATUSES as readonly string[]).includes(over.id as string)) {
+        const lastIndexOfStatus = without.reduce(
+          (lastIndex, app, index) => (app.status === newStatus ? index : lastIndex),
+          -1
+        )
+        targetIndex = lastIndexOfStatus + 1
+      } else {
+        targetIndex = without.findIndex((app) => app.id === over.id)
+        if (targetIndex === -1) targetIndex = without.length
+      }
+
+      return [...without.slice(0, targetIndex), moved, ...without.slice(targetIndex)]
+    })
+
+    if (previousStatus === newStatus) return
 
     try {
       await api.updateApplication(application.id, { status: newStatus }, auth.token)
-      await loadApplications()
     } catch (err) {
+      setApplications(previousApplications)
       toast.error(formatError(err))
     }
   }
@@ -452,7 +518,7 @@ export function Dashboard() {
               ))}
             </div>
           ) : (
-            <DndContext onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+            <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 {boardSections.map((section) => (
                   <DroppableColumn key={section.status} id={section.status} isOver={section.status === hoverStatus}>
@@ -464,25 +530,40 @@ export function Dashboard() {
                         {section.applications.length}
                       </span>
                     </div>
-                    <div className="flex flex-col gap-4">
-                      {section.applications.length === 0 ? (
-                        <div className="rounded-2xl bg-muted p-4 text-center text-sm text-muted-foreground">
-                          No applications
-                        </div>
-                      ) : (
-                        section.applications.map((app) => (
-                          <DraggableCard
-                            key={app.id}
-                            app={app}
-                            onEdit={handleEdit}
-                            onDelete={handleDelete}
-                          />
-                        ))
-                      )}
-                    </div>
+                    <SortableContext
+                      items={section.applications.map((app) => app.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="flex flex-col gap-4">
+                        {section.applications.length === 0 ? (
+                          <div className="rounded-2xl bg-muted p-4 text-center text-sm text-muted-foreground">
+                            No applications
+                          </div>
+                        ) : (
+                          section.applications.map((app) => (
+                            <DraggableCard
+                              key={app.id}
+                              app={app}
+                              onEdit={handleEdit}
+                              onDelete={handleDelete}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </SortableContext>
                   </DroppableColumn>
                 ))}
               </div>
+              <DragOverlay>
+                {activeApplication && (
+                  <ApplicationCard
+                    app={activeApplication}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    className="gap-3 py-4 shadow-lg scale-[1.03] cursor-grabbing"
+                  />
+                )}
+              </DragOverlay>
             </DndContext>
           )}
         </div>

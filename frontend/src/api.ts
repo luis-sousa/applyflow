@@ -1,3 +1,5 @@
+import { startRequest, endRequest } from './loadingStore'
+
 export type AuthResponse = {
   token: string
   userId: string
@@ -51,14 +53,20 @@ async function fetchJson<T>(
   init: RequestInit,
   token?: string
 ): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...(init.headers ?? {})
-    },
-    ...init
-  })
+  startRequest()
+  let response: Response
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+        ...(init.headers ?? {})
+      },
+      ...init
+    })
+  } finally {
+    endRequest()
+  }
 
   const text = await response.text()
   let data: unknown = null
