@@ -167,6 +167,9 @@ export function formatError(error: unknown): string {
   }
 
   if (error instanceof Error) {
+    if (error.message === 'Failed to fetch') {
+      return 'Something went wrong on our end. Please try again later.'
+    }
     return error.message
   }
 
