@@ -58,6 +58,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { cn } from '@/lib/utils'
 
 type StatusBadge = {
@@ -97,21 +103,32 @@ interface DroppableColumnProps {
   id: api.Application['status']
   isOver: boolean
   children: ReactNode
+  canPaste: boolean
+  onPaste: (status: api.Application['status']) => void
 }
 
-function DroppableColumn({ id, isOver, children }: DroppableColumnProps) {
+function DroppableColumn({ id, isOver, children, canPaste, onPaste }: DroppableColumnProps) {
   const { setNodeRef } = useDroppable({ id })
 
   return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        'flex min-h-[320px] flex-col gap-4 rounded-2xl border bg-muted/40 p-4',
-        isOver && 'border-primary border-dashed bg-primary/5'
-      )}
-    >
-      {children}
-    </div>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          ref={setNodeRef}
+          className={cn(
+            'flex min-h-[320px] flex-col gap-4 rounded-2xl border bg-muted/40 p-4',
+            isOver && 'border-primary border-dashed bg-primary/5'
+          )}
+        >
+          {children}
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem disabled={!canPaste} onClick={() => onPaste(id)}>
+          Paste here
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
@@ -119,6 +136,7 @@ type DraggableCardProps = {
   app: api.Application
   onEdit: (application: api.Application) => void
   onDelete: (application: api.Application) => void
+  onCopy?: (application: api.Application) => void
 }
 
 type ApplicationCardProps = DraggableCardProps & {
@@ -127,7 +145,7 @@ type ApplicationCardProps = DraggableCardProps & {
   refProp?: (node: HTMLElement | null) => void
 }
 
-function ApplicationCard({ app, onEdit, onDelete, className, style, refProp, ...rest }: ApplicationCardProps & Record<string, unknown>) {
+function ApplicationCard({ app, onEdit, onDelete, onCopy, className, style, refProp, ...rest }: ApplicationCardProps & Record<string, unknown>) {
   const badge = getStatusBadge(app.status)
 
   return (
@@ -171,24 +189,32 @@ function ApplicationCard({ app, onEdit, onDelete, className, style, refProp, ...
   )
 }
 
-function DraggableCard({ app, onEdit, onDelete }: DraggableCardProps) {
+function DraggableCard({ app, onEdit, onDelete, onCopy }: DraggableCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: app.id })
 
   return (
-    <ApplicationCard
-      app={app}
-      onEdit={onEdit}
-      onDelete={onDelete}
-      refProp={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0 : 1,
-      }}
-      className="gap-3 py-4 hover:-translate-y-0.5 hover:shadow-md cursor-grab"
-      {...attributes}
-      {...listeners}
-    />
+    <ContextMenu>
+      <ContextMenuTrigger className="contents">
+        <ApplicationCard
+          app={app}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onCopy={onCopy}
+          refProp={setNodeRef}
+          style={{
+            transform: CSS.Transform.toString(transform),
+            transition,
+            opacity: isDragging ? 0 : 1,
+          }}
+          className="gap-3 py-4 hover:-translate-y-0.5 hover:shadow-md cursor-grab"
+          {...attributes}
+          {...listeners}
+        />
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={() => onCopy?.(app)}>Copy</ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
@@ -230,6 +256,7 @@ export function Dashboard() {
   const [hoverStatus, setHoverStatus] = useState<api.Application['status'] | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<api.Application | null>(null)
   const [activeApplication, setActiveApplication] = useState<api.Application | null>(null)
+  const [copiedApplication, setCopiedApplication] = useState<api.Application | null>(null)
   const [formData, setFormData] = useState(EMPTY_FORM)
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
@@ -433,6 +460,38 @@ export function Dashboard() {
     }
   }
 
+  const handleCopy = (application: api.Application) => {
+    setCopiedApplication(application)
+    toast.success('Application copied')
+  }
+
+  const handlePaste = async (status: api.Application['status']) => {
+    if (!auth.token || !copiedApplication) return
+
+    try {
+      const created = await api.createApplication(
+        {
+          title: copiedApplication.title,
+          companyName: copiedApplication.companyName,
+          status,
+          appliedDate: copiedApplication.appliedDate,
+          notes: copiedApplication.notes
+        } as api.CreateApplicationRequest,
+        auth.token
+      )
+
+      setApplications((current) => {
+        const firstIndexOfStatus = current.findIndex((app) => app.status === status)
+        if (firstIndexOfStatus === -1) return [...current, created]
+        return [...current.slice(0, firstIndexOfStatus), created, ...current.slice(firstIndexOfStatus)]
+      })
+
+      toast.success('Application pasted')
+    } catch (err) {
+      toast.error(formatError(err))
+    }
+  }
+
   const handleDelete = (application: api.Application) => {
     setDeleteCandidate(application)
   }
@@ -528,7 +587,13 @@ export function Dashboard() {
             <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 {boardSections.map((section) => (
-                  <DroppableColumn key={section.status} id={section.status} isOver={section.status === hoverStatus}>
+                  <DroppableColumn
+                    key={section.status}
+                    id={section.status}
+                    isOver={section.status === hoverStatus}
+                    canPaste={!!copiedApplication}
+                    onPaste={handlePaste}
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <h2 className="m-0 text-sm font-semibold tracking-wide uppercase text-foreground">
                         {section.status}
@@ -553,6 +618,7 @@ export function Dashboard() {
                               app={app}
                               onEdit={handleEdit}
                               onDelete={handleDelete}
+                              onCopy={handleCopy}
                             />
                           ))
                         )}
