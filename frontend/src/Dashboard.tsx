@@ -510,7 +510,7 @@ export function Dashboard() {
 
     try {
       if (isEditing && editingApplicationId) {
-        await api.updateApplication(
+        const updated = await api.updateApplication(
           editingApplicationId,
           {
             title: formData.title,
@@ -521,20 +521,28 @@ export function Dashboard() {
           },
           auth.token
         )
+        setApplications((current) => current.map((app) => (app.id === updated.id ? updated : app)))
         toast.success('Application updated')
       } else {
-        await api.createApplication(
+        const created = await api.createApplication(
           {
             ...formData,
             appliedDate: new Date(formData.appliedDate).toISOString()
           } as api.CreateApplicationRequest,
           auth.token
         )
+        setApplications((current) => {
+          const lastIndexOfStatus = current.reduce(
+            (lastIndex, app, index) => (app.status === created.status ? index : lastIndex),
+            -1
+          )
+          const targetIndex = lastIndexOfStatus + 1
+          return [...current.slice(0, targetIndex), created, ...current.slice(targetIndex)]
+        })
         toast.success('Application created')
       }
 
       closeDialog()
-      await loadApplications()
     } catch (err) {
       toast.error(formatError(err))
     }
