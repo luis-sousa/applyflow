@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { DndContext, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import type { DragStartEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -355,70 +355,150 @@ export function Dashboard() {
     })
   )
 
-  const getStatusForOverId = (overId: string | number | undefined): api.Application['status'] | null => {
+  const getStatusForOverId = (
+    current: api.Application[],
+    overId: string | number | undefined
+  ): api.Application['status'] | null => {
     if (overId == null) return null
     if ((STATUSES as readonly string[]).includes(overId as string)) {
       return overId as api.Application['status']
     }
-    return applications.find((app) => app.id === overId)?.status ?? null
+    return current.find((app) => app.id === overId)?.status ?? null
+  }
+
+
+  // Reorders the active card to sit next to `overId` within its column.
+  // Used once, on drop, to settle the final position.
+  const reorderApplications = (
+    current: api.Application[],
+    activeId: string | number,
+    overId: string | number | undefined
+  ): api.Application[] | null => {
+    const activeIndex = current.findIndex((app) => app.id === activeId)
+    if (activeIndex === -1 || overId == null || overId === activeId) return null
+
+    const application = current[activeIndex]
+    const newStatus = getStatusForOverId(current, overId)
+    if (!newStatus) return null
+
+    const without = current.filter((app) => app.id !== activeId)
+    const moved = { ...application, status: newStatus }
+
+    let targetIndex: number
+    if ((STATUSES as readonly string[]).includes(overId as string)) {
+      const lastIndexOfStatus = without.reduce(
+        (lastIndex, app, index) => (app.status === newStatus ? index : lastIndex),
+        -1
+      )
+      targetIndex = lastIndexOfStatus + 1
+    } else {
+      const overIndex = without.findIndex((app) => app.id === overId)
+      targetIndex = overIndex === -1 ? without.length : overIndex
+    }
+
+    const next = [...without.slice(0, targetIndex), moved, ...without.slice(targetIndex)]
+
+    const unchanged =
+      next.length === current.length &&
+      next.every((app, index) => app.id === current[index].id && app.status === current[index].status)
+
+    return unchanged ? null : next
+  }
+
+  const dragStartRef = useRef<{ applications: api.Application[]; status: api.Application['status'] } | null>(null)
+  const pendingMoveRef = useRef<{ timeoutId: number; status: api.Application['status'] } | null>(null)
+
+  const clearPendingMove = () => {
+    if (pendingMoveRef.current) {
+      window.clearTimeout(pendingMoveRef.current.timeoutId)
+      pendingMoveRef.current = null
+    }
+  }
+
+  // Moves the active card to the end of `newStatus`'s group, if it isn't there already.
+  const moveToStatus = (
+    current: api.Application[],
+    activeId: string | number,
+    newStatus: api.Application['status']
+  ): api.Application[] | null => {
+    const application = current.find((app) => app.id === activeId)
+    if (!application || application.status === newStatus) return null
+
+    const without = current.filter((app) => app.id !== activeId)
+    const moved = { ...application, status: newStatus }
+    const lastIndexOfStatus = without.reduce(
+      (lastIndex, app, index) => (app.status === newStatus ? index : lastIndex),
+      -1
+    )
+    const targetIndex = lastIndexOfStatus + 1
+
+    return [...without.slice(0, targetIndex), moved, ...without.slice(targetIndex)]
   }
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveApplication(applications.find((app) => app.id === event.active.id) ?? null)
+    const application = applications.find((app) => app.id === event.active.id) ?? null
+    setActiveApplication(application)
+    dragStartRef.current = application
+      ? { applications, status: application.status }
+      : null
+    clearPendingMove()
   }
 
   const handleDragOver = (event: DragOverEvent) => {
-    setHoverStatus(getStatusForOverId(event.over?.id))
+    const { active, over } = event
+    const newStatus = getStatusForOverId(applications, over?.id)
+    setHoverStatus(newStatus)
+
+    if (!newStatus) {
+      clearPendingMove()
+      return
+    }
+
+    const currentApp = applications.find((app) => app.id === active.id)
+    if (!currentApp || currentApp.status === newStatus) {
+      clearPendingMove()
+      return
+    }
+
+    // Already scheduled to move to this column — let it run.
+    if (pendingMoveRef.current?.status === newStatus) return
+
+    clearPendingMove()
+
+    const timeoutId = window.setTimeout(() => {
+      pendingMoveRef.current = null
+      setApplications((prev) => moveToStatus(prev, active.id, newStatus) ?? prev)
+    }, 150)
+
+    pendingMoveRef.current = { timeoutId, status: newStatus }
   }
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event
     setHoverStatus(null)
     setActiveApplication(null)
+    clearPendingMove()
 
-    if (!auth.token || !over) return
+    const dragStart = dragStartRef.current
+    dragStartRef.current = null
 
-    const application = applications.find((app) => app.id === active.id)
-    const newStatus = getStatusForOverId(over.id)
-    if (!application || !newStatus) return
+    if (!dragStart) return
 
-    const previousApplications = applications
-    const previousStatus = application.status
+    const next = reorderApplications(applications, active.id, over?.id)
+    if (next) {
+      setApplications(next)
+    }
 
-    setApplications((current) => {
-      const activeIndex = current.findIndex((app) => app.id === application.id)
-      const without = current.filter((app) => app.id !== application.id)
-      const moved = { ...application, status: newStatus }
+    if (!auth.token) return
 
-      let targetIndex: number
-      if (over.id === application.id) {
-        targetIndex = without.length
-      } else if ((STATUSES as readonly string[]).includes(over.id as string)) {
-        const lastIndexOfStatus = without.reduce(
-          (lastIndex, app, index) => (app.status === newStatus ? index : lastIndex),
-          -1
-        )
-        targetIndex = lastIndexOfStatus + 1
-      } else {
-        const overIndex = without.findIndex((app) => app.id === over.id)
-        if (overIndex === -1) {
-          targetIndex = without.length
-        } else {
-          const overIndexInCurrent = current.findIndex((app) => app.id === over.id)
-          const movingDown = activeIndex < overIndexInCurrent
-          targetIndex = movingDown ? overIndex + 1 : overIndex
-        }
-      }
-
-      return [...without.slice(0, targetIndex), moved, ...without.slice(targetIndex)]
-    })
-
-    if (previousStatus === newStatus) return
+    const finalApplications = next ?? applications
+    const finalApplication = finalApplications.find((app) => app.id === active.id)
+    if (!finalApplication || finalApplication.status === dragStart.status) return
 
     try {
-      await api.updateApplication(application.id, { status: newStatus }, auth.token)
+      await api.updateApplication(finalApplication.id, { status: finalApplication.status }, auth.token)
     } catch (err) {
-      setApplications(previousApplications)
+      setApplications(dragStart.applications)
       toast.error(formatError(err))
     }
   }
